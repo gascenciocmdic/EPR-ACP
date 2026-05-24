@@ -1,0 +1,1989 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control de Proyectos Mineros | EPR Dashboard Ejecutivo</title>
+  <meta name="description" content="Dashboard ejecutivo de control de proyectos mineros. Análisis de avance físico, curvas S, eficiencia de HH y desvíos para toma de decisiones gerenciales.">
+  <link rel="stylesheet" href="style.css">
+  <!-- Chart.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- SheetJS from CDN for Excel Parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">M</div>
+      <div class="brand-text">
+        <h1>Dashboard Control de Proyectos Mineros</h1>
+        <p>EVALUADOR DE PROGRAMAS DE EJECUCIÓN (EPR)</p>
+      </div>
+    </div>
+    <div class="week-badge" id="week-badge">
+      <span></span> Semana de Reporte: 24 May 2026 (Semana Actual)
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Panel de Carga de Excel (Premium Glassmorphism Widget) -->
+    <section class="excel-upload-panel chart-card" id="excel-upload-widget" style="margin-bottom: 24px; min-height: auto;">
+      <div class="chart-card-header" style="cursor: pointer; margin-bottom: 0;" id="upload-panel-header">
+        <h2 class="chart-card-title">📥 Carga de Archivos de Control (Excel) para Actualización</h2>
+        <span class="accordion-toggle" id="upload-panel-toggle" style="font-size: 10px;">▼</span>
+      </div>
+      <div class="excel-upload-content" id="upload-panel-body" style="padding-top: 15px;">
+        <p class="excel-upload-desc">
+          Arrastra o selecciona las planillas Excel correspondientes a la <strong>Semana Actual</strong> y la <strong>Semana Pasada</strong> para actualizar dinámicamente todos los KPIs, curvas S y desvíos en caliente (sin necesidad de reiniciar servidores).
+        </p>
+        <div class="upload-zones-wrapper">
+          <div class="upload-zone" id="drop-zone-actual">
+            <span class="upload-zone-icon">📊</span>
+            <h3>Semana Actual (.xlsx)</h3>
+            <p>Arrastra el archivo aquí o haz clic para seleccionarlo</p>
+            <input type="file" id="file-actual" accept=".xlsx" style="display: none;">
+            <div class="file-info" id="info-actual">No se ha seleccionado ningún archivo</div>
+          </div>
+          <div class="upload-zone" id="drop-zone-pasada">
+            <span class="upload-zone-icon">🔄</span>
+            <h3>Semana Pasada (.xlsx)</h3>
+            <p>Arrastra el archivo aquí o haz clic para seleccionarlo</p>
+            <input type="file" id="file-pasada" accept=".xlsx" style="display: none;">
+            <div class="file-info" id="info-pasada">No se ha seleccionado ningún archivo</div>
+          </div>
+        </div>
+        <div class="upload-actions">
+          <button id="process-files-btn" class="process-btn" disabled>Procesar Planillas y Actualizar Dashboard</button>
+          <button id="download-json-btn" class="download-btn" style="display: none;">Descargar JS del Dashboard</button>
+        </div>
+        <div class="processing-progress" id="processing-progress" style="display: none;">
+          <div class="spinner"></div>
+          <span id="processing-status-text">Procesando y recalculando KPIs...</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Filters Section -->
+    <section class="filter-panel" aria-label="Filtros del Dashboard">
+      <div class="search-input-wrapper filter-group">
+        <label for="search-box">Buscar Del entregarle / Actividad</label>
+        <input type="text" id="search-box" class="filter-control" placeholder="Escriba código CMDIC, ID P6 o palabras clave...">
+      </div>
+
+      <div class="filter-group">
+        <label for="filter-discipline">Disciplina</label>
+        <select id="filter-discipline" class="filter-control">
+          <option value="all">Todas las Disciplinas</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label for="filter-type">Tipo de Deliverable</label>
+        <select id="filter-type" class="filter-control">
+          <option value="all">Todos los Tipos</option>
+          <option value="Documento">Documentos</option>
+          <option value="Plano">Planos</option>
+          <option value="Actividad">Actividades de Control</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label for="filter-status">Estado de Avance</label>
+        <select id="filter-status" class="filter-control">
+          <option value="all">Todos los Estados</option>
+          <option value="completado">Completados (100%)</option>
+          <option value="proceso">En Desarrollo (1% - 99%)</option>
+          <option value="no_iniciado">Sin Iniciar (0%)</option>
+          <option value="delayed">Con Atraso (Forecast > Plan)</option>
+        </select>
+      </div>
+
+      <button id="clear-filters-btn" class="clear-filters-btn">Limpiar Filtros</button>
+    </section>
+
+    <!-- KPI Summary Grid -->
+    <section class="kpi-grid" aria-label="Indicadores Clave de Desempeño (KPIs)">
+      <!-- KPI 1: Progress Programado vs Real -->
+      <article class="kpi-card indigo">
+        <div class="kpi-header">
+          <span class="kpi-title">Avance Físico Global</span>
+          <span class="kpi-icon">📊</span>
+        </div>
+        <div class="kpi-value" id="kpi-progress-real">0.0%</div>
+        <div class="kpi-subtext" id="kpi-progress-subtext">
+          <span>Programado: <strong id="kpi-progress-plan">0.0%</strong></span>
+          <span class="trend-badge" id="kpi-progress-diff-badge">0.0%</span>
+        </div>
+      </article>
+
+      <!-- KPI 2: HH Burned vs Earned -->
+      <article class="kpi-card emerald">
+        <div class="kpi-header">
+          <span class="kpi-title">Eficiencia de Horas Hombre (CPI)</span>
+          <span class="kpi-icon">⏱️</span>
+        </div>
+        <div class="kpi-value" id="kpi-cpi">1.00</div>
+        <div class="kpi-subtext" id="kpi-hh-subtext">
+          <span>Ganadas: <strong id="kpi-hh-earned">0k</strong> / Ppto: <strong id="kpi-hh-budget">0k</strong></span>
+          <span class="trend-badge up" id="kpi-cpi-badge">Eficiente</span>
+        </div>
+      </article>
+
+      <!-- KPI 3: Slippage Deliverables -->
+      <article class="kpi-card rose">
+        <div class="kpi-header">
+          <span class="kpi-title">Entregables Desviados</span>
+          <span class="kpi-icon">⚠️</span>
+        </div>
+        <div class="kpi-value" id="kpi-slippage-count">0</div>
+        <div class="kpi-subtext" id="kpi-slippage-subtext">
+          <span>Total en el Plan actual</span>
+          <span class="trend-badge down" id="kpi-slippage-badge">0 desvíos</span>
+        </div>
+      </article>
+
+      <!-- KPI 4: Weekly Performance -->
+      <article class="kpi-card amber">
+        <div class="kpi-header">
+          <span class="kpi-title">Variación Semanal</span>
+          <span class="kpi-icon">🔄</span>
+        </div>
+        <div class="kpi-value" id="kpi-weekly-progress">+0.0%</div>
+        <div class="kpi-subtext" id="kpi-weekly-subtext">
+          <span>Aumento en avance real</span>
+          <span class="trend-badge up" id="kpi-weekly-earned-hh">+0 HH</span>
+        </div>
+      </article>
+    </section>
+
+    <!-- Tarjeta de Análisis de Planificador Senior -->
+    <section class="chart-card senior-planner-card" style="margin-bottom: 24px; min-height: auto;">
+      <div class="chart-card-header" style="margin-bottom: 12px;">
+        <h2 class="chart-card-title">👴 Análisis de Planificación y Control de Proyectos Senior</h2>
+        <div class="week-badge" style="background: rgba(245, 158, 11, 0.1); border-color: var(--color-warning);">Informe de Control de Desviaciones</div>
+      </div>
+      <div class="senior-planner-memo" id="senior-planner-memo">
+        <!-- Generado dinámicamente por JS en base a los KPIs y variaciones -->
+        Cargando informe y análisis...
+      </div>
+    </section>
+
+    <!-- Main Charts Section -->
+    <div class="dashboard-row">
+      <!-- Chart 1: S-Curve -->
+      <section class="chart-card">
+        <div class="chart-card-header">
+          <h2 class="chart-card-title">📈 Curva S Acumulada del Proyecto (Planned vs. Forecast vs. Actual)</h2>
+          <div class="week-badge" style="background: rgba(99, 102, 241, 0.1); border-color: var(--color-indigo);">EPR S-Curve</div>
+        </div>
+        <div class="chart-container">
+          <canvas id="sCurveChart"></canvas>
+        </div>
+      </section>
+
+      <!-- Chart 2: Status Breakdown and Type Counts -->
+      <section class="chart-card">
+        <div class="chart-card-header">
+          <h2 class="chart-card-title">📋 Estado y Composición de Entregables</h2>
+        </div>
+        <div class="chart-container">
+          <canvas id="statusBreakdownChart"></canvas>
+        </div>
+      </section>
+    </div>
+
+    <!-- Section: Performance and Resource Allocation -->
+    <div class="dashboard-row equal">
+      <!-- Chart 3: Progress by Discipline -->
+      <section class="chart-card">
+        <div class="chart-card-header">
+          <h2 class="chart-card-title">🏗️ Desviación de Avance por Disciplina</h2>
+        </div>
+        <div class="chart-container">
+          <canvas id="progressByDisciplineChart"></canvas>
+        </div>
+      </section>
+
+      <!-- Chart 4: HH Budget vs Earned by Discipline -->
+      <section class="chart-card">
+        <div class="chart-card-header">
+          <h2 class="chart-card-title">⚡ Distribución y Ganancia de HH por Disciplina</h2>
+        </div>
+        <div class="chart-container">
+          <canvas id="hhByDisciplineChart"></canvas>
+        </div>
+      </section>
+    </div>
+
+    <!-- Section: Tables for Executive Control -->
+    <div class="dashboard-row">
+      <!-- Left Column: Critical Path Slippage and Weekly Slips -->
+      <section class="chart-card" style="min-height: 480px;">
+        <div class="chart-card-header">
+          <h2 class="chart-card-title">🚦 Desvíos Críticos e Impactos</h2>
+          <div class="tab-container">
+            <button id="tab-weekly-slips" class="tab-btn active">Desvíos de esta semana</button>
+            <button id="tab-cum-delayed" class="tab-btn">Mayores Atrasos Acumulados</button>
+            <button id="tab-wow-comparison" class="tab-btn">Comparativa WoW (Semana a Semana)</button>
+          </div>
+        </div>
+        
+        <div class="table-wrapper" style="max-height: 380px; padding: 10px;">
+          <!-- Weekly Slips Table -->
+          <table id="table-weekly-slips-content">
+            <thead>
+              <tr>
+                <th>Cód. CMDIC</th>
+                <th>Activity ID</th>
+                <th>Descripción</th>
+                <th>Disciplina</th>
+                <th>Forecast Anterior</th>
+                <th>Forecast Nuevo</th>
+                <th>Desplazamiento</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Injected by JS -->
+            </tbody>
+          </table>
+
+          <!-- Cumulative Delayed Table -->
+          <table id="table-cum-delayed-content" style="display: none;">
+            <thead>
+              <tr>
+                <th>Cód. CMDIC</th>
+                <th>Activity ID</th>
+                <th>Descripción</th>
+                <th>Disciplina</th>
+                <th>Plan Finish</th>
+                <th>Forecast Finish</th>
+                <th>Días de Atraso</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Injected by JS -->
+            </tbody>
+          </table>
+
+          <!-- WoW Comparison view -->
+          <div id="wow-comparison-content" style="display: none;" class="wow-comparison-wrapper">
+            <!-- Injected by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Progress Gains -->
+      <section class="chart-card" style="min-height: 480px;">
+        <div class="chart-card-header">
+          <h2 class="chart-card-title">🚀 Avances y Logros de la Semana</h2>
+          <div class="week-badge" style="background: rgba(16, 185, 129, 0.1); border-color: var(--color-emerald);">+ Avance</div>
+        </div>
+        <div class="table-wrapper" style="max-height: 380px;">
+          <table id="table-progress-gains-content">
+            <thead>
+              <tr>
+                <th>Cód. CMDIC</th>
+                <th>Activity ID</th>
+                <th>Descripción</th>
+                <th>Avance Anterior</th>
+                <th>Avance Nuevo</th>
+                <th>Incremento</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Injected by JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- Section: Detailed Activity Table with Pagination -->
+    <section class="chart-card" style="margin-top: 24px; min-height: 550px;">
+      <div class="chart-card-header">
+        <h2 class="chart-card-title">🔍 Registro Detallado y Control de Actividades (EPR)</h2>
+        <div id="table-record-count" class="week-badge" style="background: rgba(255,255,255,0.03);">Mostrando 0 de 0 registros</div>
+      </div>
+      
+      <div class="table-wrapper">
+        <table id="table-detailed-activities">
+          <thead>
+            <tr>
+              <th style="width: 140px;">Activity ID</th>
+              <th>Cód. CMDIC</th>
+              <th>Descripción</th>
+              <th>Disciplina</th>
+              <th>Tipo</th>
+              <th>HH Ppto</th>
+              <th>Avance Prog.</th>
+              <th>Avance Real</th>
+              <th>Inicio Real</th>
+              <th>Fin Forecast</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Injected by JS -->
+          </tbody>
+        </table>
+      </div>
+      
+      <div class="table-footer">
+        <span id="pagination-info">Página 1 de 1</span>
+        <div class="pagination-btn-group">
+          <button id="btn-prev-page" class="pagination-btn" disabled>Anterior</button>
+          <button id="btn-next-page" class="pagination-btn" disabled>Siguiente</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Load Processed Dashboard Data -->
+  <script src="data/dashboard_data.js"></script>
+  
+  <!-- Interactive Dashboard Controller Logic -->
+  <script>
+    // Constants for dates and charts
+    const STATUS_DATE = new Date(2026, 4, 24); // May 24, 2026
+    
+    // Globals for filtered data
+    let currentFilteredItems = [];
+    let currentPage = 1;
+    const itemsPerPage = 12;
+    
+    // Chart References
+    let sCurveChart = null;
+    let statusBreakdownChart = null;
+    let progressByDisciplineChart = null;
+    let hhByDisciplineChart = null;
+
+    // Helper functions for parsing dates
+    function parseDate(dStr) {
+      if (!dStr) return null;
+      const cleanStr = dStr.split(' ')[0];
+      let dObj = null;
+      
+      const parts = cleanStr.split('-');
+      if (parts.length === 3) {
+        let month = parseInt(parts[1]) - 1;
+        if (isNaN(month)) {
+          const monthMap = {
+            ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
+            jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11,
+            jan: 0, apr: 3, aug: 7, dec: 11
+          };
+          const mKey = parts[1].toLowerCase().slice(0, 3);
+          month = monthMap[mKey] !== undefined ? monthMap[mKey] : NaN;
+        }
+        
+        let yr = parseInt(parts[2]);
+        let day = parseInt(parts[0]);
+        if (parts[0].length === 4) {
+          yr = parseInt(parts[0]);
+          day = parseInt(parts[2]);
+          month = parseInt(parts[1]) - 1;
+        } else {
+          if (yr < 100) yr += 2000;
+        }
+        dObj = new Date(yr, month, day);
+      }
+      
+      const slashParts = cleanStr.split('/');
+      if (slashParts.length === 3) {
+        if (slashParts[0].length === 4) {
+          dObj = new Date(parseInt(slashParts[0]), parseInt(slashParts[1]) - 1, parseInt(slashParts[2]));
+        } else {
+          let yr = parseInt(slashParts[2]);
+          if (yr < 100) yr += 2000;
+          dObj = new Date(yr, parseInt(slashParts[1]) - 1, parseInt(slashParts[0]));
+        }
+      }
+      
+      if (dObj && !isNaN(dObj.getTime())) {
+        return dObj;
+      }
+      return null;
+    }
+
+    function formatDate(dObj) {
+      if (!dObj) return '-';
+      const day = String(dObj.getDate()).padStart(2, '0');
+      const month = String(dObj.getMonth() + 1).padStart(2, '0');
+      const year = dObj.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+
+    // Helper: format percentages
+    function formatPct(val) {
+      return (val * 100).toFixed(1) + '%';
+    }
+
+    // Helper: format numbers with thousands separator
+    function formatNumber(val, decimals = 0) {
+      return parseFloat(val).toLocaleString('es-CL', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
+    }
+
+    // JS-based Excel parsing and comparison helpers
+    function cleanValJS(val) {
+      if (val === undefined || val === null) return null;
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        return trimmed === "" ? null : trimmed;
+      }
+      return String(val).trim();
+    }
+
+    function cleanNumJS(val) {
+      if (val === undefined || val === null || val === '') return 0;
+      const parsed = parseFloat(val);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+
+    function getCleanDisciplineJS(colVal, sectionVal) {
+      const val = cleanValJS(colVal);
+      if (val && val !== "DISCIPLINA") {
+        return val;
+      }
+      if (!sectionVal) {
+        return "General / Gestión";
+      }
+      const s = sectionVal.toLowerCase();
+      if (s.includes("arqueología")) return "Arqueología";
+      if (s.includes("animales") || s.includes("fauna") || s.includes("invertebrados") || s.includes("invertebrada")) return "Fauna y Biodiversidad";
+      if (s.includes("plantas") || s.includes("vegetación") || s.includes("hongos") || s.includes("líquenes") || s.includes("vegetal") || s.includes("metharme")) return "Flora y Vegetación";
+      if (s.includes("aguas") || s.includes("hidro") || s.includes("pit-lake") || s.includes("infiltración") || s.includes("sumidero") || s.includes("modelo")) return "Hidrología e Hidrogeología";
+      if (s.includes("suelos")) return "Suelos";
+      if (s.includes("ruido") || s.includes("vibración") || s.includes("vibraciones")) return "Ruido y Vibraciones";
+      if (s.includes("antropológico") || s.includes("grupos humanos") || s.includes("humano") || s.includes("pac")) return "Medio Humano / Social";
+      if (s.includes("elaboración") || s.includes("capitulos") || s.includes("eia") || s.includes("anexos")) return "Elaboración EIA";
+      if (s.includes("vial")) return "Vial / Transporte";
+      if (s.includes("paisaje")) return "Paisaje";
+      if (s.includes("paleontología")) return "Paleontología";
+      if (s.includes("campaña") || s.includes("preparación") || s.includes("estación")) return "Campañas de Terreno";
+      return "General / Gestión";
+    }
+
+    function cleanExcelDateJS(val) {
+      if (val === undefined || val === null || val === '') return null;
+      if (val instanceof Date) {
+        return val.toISOString().split('T')[0];
+      }
+      if (typeof val === 'number') {
+        const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+        if (!isNaN(date.getTime())) {
+          return date.toISOString().split('T')[0];
+        }
+      }
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (trimmed === '' || trimmed === '-') return null;
+        const lines = trimmed.split('\n').map(l => l.trim()).filter(l => l);
+        const lastLine = lines[lines.length - 1];
+        return lastLine.replace(/\s*[a-zA-Z]$/, '').trim();
+      }
+      return String(val);
+    }
+
+    function parseEPRSheet(sheet) {
+      const rows = XLSX.utils.sheet_to_json(sheet, {header: 1, raw: true});
+      const dataRows = [];
+      let currentSection = "General";
+
+      for (let r = 10; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || row.length < 3) continue;
+
+        const c_val = cleanValJS(row[2]); // Col C (Activity ID)
+        const f_val = cleanValJS(row[5]); // Col F (Description)
+
+        if (c_val && c_val.length > 50 && c_val.toLowerCase().includes("segregación")) {
+          break;
+        }
+
+        if (c_val === null && f_val !== null) {
+          const hh_val = cleanNumJS(row[12]); // Col M
+          if (hh_val === 0) {
+            currentSection = f_val;
+            continue;
+          } else {
+            continue;
+          }
+        }
+
+        if (c_val === null && f_val === null) {
+          continue;
+        }
+
+        const item = {
+          row: r + 1,
+          section: currentSection,
+          activity_id: c_val,
+          status: cleanValJS(row[3]), // Col D
+          cmdic_code: cleanValJS(row[4]), // Col E
+          description: f_val,
+          discipline: getCleanDisciplineJS(row[6], currentSection), // Col G
+          is_document: cleanValJS(row[7]) !== null && cleanValJS(row[7]) !== "",
+          is_plano: cleanValJS(row[8]) !== null && cleanValJS(row[8]) !== "",
+          is_activity: cleanValJS(row[9]) !== null && cleanValJS(row[9]) !== "",
+          hh_co: cleanNumJS(row[10]),
+          hh_td: cleanNumJS(row[11]),
+          hh_total_ppto: cleanNumJS(row[12]),
+          hh_total_ganadas: cleanNumJS(row[13]),
+          avance_programado: cleanNumJS(row[14]),
+          avance_real: cleanNumJS(row[15])
+        };
+
+        if (item.is_document) item.type = "Documento";
+        else if (item.is_plano) item.type = "Plano";
+        else item.type = "Actividad";
+
+        item.plan = {
+          inicio: cleanExcelDateJS(row[16]),
+          emision_reva: cleanExcelDateJS(row[17]),
+          emision_revb: cleanExcelDateJS(row[18]),
+          aprobacion_revb: cleanExcelDateJS(row[19]),
+          emision_revp: cleanExcelDateJS(row[20]),
+          aprobacion_revp: cleanExcelDateJS(row[21])
+        };
+
+        item.real = {
+          inicio: cleanExcelDateJS(row[22]),
+          emision_reva: cleanExcelDateJS(row[23]),
+          emision_revb: cleanExcelDateJS(row[24]),
+          aprobacion_revb: cleanExcelDateJS(row[25]),
+          emision_revc: cleanExcelDateJS(row[26]),
+          aprobacion_revc: cleanExcelDateJS(row[27]),
+          emision_revp: cleanExcelDateJS(row[28]),
+          aprobacion_revp: cleanExcelDateJS(row[29])
+        };
+
+        item.forecast = {
+          inicio: cleanExcelDateJS(row[30]),
+          emision_reva: cleanExcelDateJS(row[31]),
+          emision_revb: cleanExcelDateJS(row[32]),
+          aprobacion_revb: cleanExcelDateJS(row[33]),
+          emision_revp: cleanExcelDateJS(row[34]),
+          aprobacion_revp: cleanExcelDateJS(row[35])
+        };
+
+        if (item.hh_total_ganadas === 0 && item.avance_real > 0) {
+          item.hh_total_ganadas = item.avance_real * item.hh_total_ppto;
+        }
+
+        dataRows.push(item);
+      }
+      return dataRows;
+    }
+
+    function crossReferenceJS(actualItems, pasadaItems) {
+      const pasadaDict = {};
+      pasadaItems.forEach(x => {
+        if (x.activity_id) pasadaDict[x.activity_id] = x;
+      });
+
+      const crossLogs = [];
+      const newItems = [];
+      const deletedItems = [];
+
+      actualItems.forEach(item => {
+        const actId = item.activity_id;
+        if (!actId) return;
+
+        if (!(actId in pasadaDict)) {
+          newItems.push({
+            activity_id: actId,
+            cmdic_code: item.cmdic_code,
+            description: item.description,
+            discipline: item.discipline,
+            type: item.type,
+            hh_ppto: item.hh_total_ppto,
+            avance_real: item.avance_real
+          });
+          return;
+        }
+
+        const pasadaItem = pasadaDict[actId];
+        const progressDiff = item.avance_real - pasadaItem.avance_real;
+
+        const actualForecastEnd = parseDate(item.forecast.aprobacion_revp);
+        const pasadaForecastEnd = parseDate(pasadaItem.forecast.aprobacion_revp);
+
+        let daysSlippedThisWeek = 0;
+        if (actualForecastEnd && pasadaForecastEnd) {
+          daysSlippedThisWeek = Math.round((actualForecastEnd - pasadaForecastEnd) / 86400000);
+        }
+
+        const planEnd = parseDate(item.plan.aprobacion_revp);
+        let cumulativeSlippage = 0;
+        if (actualForecastEnd && planEnd) {
+          cumulativeSlippage = Math.round((actualForecastEnd - planEnd) / 86400000);
+        }
+
+        let statusTransition = null;
+        if (pasadaItem.avance_real < 1.0 && item.avance_real >= 1.0) {
+          statusTransition = "completado";
+        } else if (pasadaItem.avance_real === 0.0 && item.avance_real > 0.0) {
+          statusTransition = "iniciado";
+        }
+
+        let startedThisWeek = false;
+        if (!pasadaItem.real.inicio && item.real.inicio) {
+          startedThisWeek = true;
+        }
+
+        if (progressDiff > 0 || daysSlippedThisWeek !== 0 || statusTransition || startedThisWeek) {
+          crossLogs.push({
+            activity_id: actId,
+            cmdic_code: item.cmdic_code,
+            description: item.description,
+            discipline: item.discipline,
+            type: item.type,
+            hh_ppto: item.hh_total_ppto,
+            old_avance_real: pasadaItem.avance_real,
+            new_avance_real: item.avance_real,
+            avance_real_diff: progressDiff,
+            old_forecast_end: pasadaItem.forecast.aprobacion_revp,
+            new_forecast_end: item.forecast.aprobacion_revp,
+            days_slipped_this_week: daysSlippedThisWeek,
+            cumulative_slippage: cumulativeSlippage,
+            status_transition: statusTransition,
+            started_this_week: startedThisWeek
+          });
+        }
+      });
+
+      const actualIds = new Set(actualItems.map(x => x.activity_id).filter(Boolean));
+      for (const actId in pasadaDict) {
+        if (!actualIds.has(actId)) {
+          const item = pasadaDict[actId];
+          deletedItems.push({
+            activity_id: actId,
+            cmdic_code: item.cmdic_code,
+            description: item.description,
+            discipline: item.discipline,
+            type: item.type,
+            hh_ppto: item.hh_total_ppto
+          });
+        }
+      }
+
+      return {
+        changes: crossLogs,
+        new_items: newItems,
+        deleted_items: deletedItems
+      };
+    }
+
+    function processUploadedExcels(actualSheet, pasadaSheet) {
+      const actualItems = parseEPRSheet(actualSheet);
+      const pasadaItems = parseEPRSheet(pasadaSheet);
+
+      if (actualItems.length === 0) {
+        alert("No se pudieron extraer datos de la hoja 'EPR' del archivo de Semana Actual. Por favor verifica que tenga esa hoja con el formato indicado.");
+        return;
+      }
+      if (pasadaItems.length === 0) {
+        alert("No se pudieron extraer datos de la hoja 'EPR' del archivo de Semana Pasada. Por favor verifica que tenga esa hoja con el formato indicado.");
+        return;
+      }
+
+      const comparison = crossReferenceJS(actualItems, pasadaItems);
+
+      const delayedItems = [];
+      actualItems.forEach(x => {
+        if (!x.activity_id) return;
+        const pEnd = parseDate(x.plan.aprobacion_revp);
+        const fEnd = parseDate(x.forecast.aprobacion_revp) || pEnd;
+        if (pEnd && fEnd) {
+          const slip = Math.round((fEnd - pEnd) / 86400000);
+          if (slip > 0 && x.avance_real < 1.0) {
+            delayedItems.push({
+              activity_id: x.activity_id,
+              cmdic_code: x.cmdic_code,
+              description: x.description,
+              discipline: x.discipline,
+              type: x.type,
+              hh_ppto: x.hh_total_ppto,
+              avance_real: x.avance_real,
+              plan_end: x.plan.aprobacion_revp,
+              forecast_end: x.forecast.aprobacion_revp,
+              slippage_days: slip
+            });
+          }
+        }
+      });
+      delayedItems.sort((a, b) => b.slippage_days - a.slippage_days);
+
+      const progressGains = [];
+      comparison.changes.forEach(change => {
+        if (change.avance_real_diff > 0) {
+          progressGains.push({
+            activity_id: change.activity_id,
+            cmdic_code: change.cmdic_code,
+            description: change.description,
+            discipline: change.discipline,
+            type: change.type,
+            hh_ppto: change.hh_ppto,
+            old_avance_real: change.old_avance_real,
+            new_avance_real: change.new_avance_real,
+            diff: change.avance_real_diff
+          });
+        }
+      });
+      progressGains.sort((a, b) => b.diff - a.diff);
+
+      const weeklySlips = [];
+      comparison.changes.forEach(change => {
+        if (change.days_slipped_this_week > 0) {
+          weeklySlips.push({
+            activity_id: change.activity_id,
+            cmdic_code: change.cmdic_code,
+            description: change.description,
+            discipline: change.discipline,
+            type: change.type,
+            hh_ppto: change.hh_ppto,
+            old_forecast: change.old_forecast_end,
+            new_forecast: change.new_forecast_end,
+            slip_days: change.days_slipped_this_week
+          });
+        }
+      });
+      weeklySlips.sort((a, b) => b.slip_days - a.slip_days);
+
+      const totalActualHH = actualItems.reduce((sum, x) => sum + x.hh_total_ppto, 0);
+      const totalActualEarned = actualItems.reduce((sum, x) => sum + x.hh_total_ganadas, 0);
+      const totalActualPlannedWeighted = actualItems.reduce((sum, x) => sum + x.avance_programado * x.hh_total_ppto, 0);
+      const totalActualEarnedWeighted = actualItems.reduce((sum, x) => sum + x.avance_real * x.hh_total_ppto, 0);
+
+      const totalPasadaHH = pasadaItems.reduce((sum, x) => sum + x.hh_total_ppto, 0);
+      const totalPasadaEarnedWeighted = pasadaItems.reduce((sum, x) => sum + x.avance_real * x.hh_total_ppto, 0);
+
+      const actualGlobalRealPct = totalActualHH > 0 ? (totalActualEarnedWeighted / totalActualHH) : 0;
+      const pasadaGlobalRealPct = totalPasadaHH > 0 ? (totalPasadaEarnedWeighted / totalPasadaHH) : 0;
+
+      const weeklyProgressGain = actualGlobalRealPct - pasadaGlobalRealPct;
+      const weeklyEarnedHHGain = totalActualEarned - pasadaItems.reduce((sum, x) => sum + x.hh_total_ganadas, 0);
+
+      const globalCPI = totalActualPlannedWeighted > 0 ? (totalActualEarned / totalActualPlannedWeighted) : 1.0;
+
+      DASHBOARD_DATA.all_items = actualItems;
+      DASHBOARD_DATA.weekly_slips = weeklySlips;
+      DASHBOARD_DATA.delayed_items = delayedItems;
+      DASHBOARD_DATA.progress_gains = progressGains;
+      DASHBOARD_DATA.new_items = comparison.new_items;
+      DASHBOARD_DATA.deleted_items = comparison.deleted_items;
+      
+      DASHBOARD_DATA.kpi.semana_actual = {
+        avance_programado: totalActualHH > 0 ? (totalActualPlannedWeighted / totalActualHH) : 0,
+        avance_real: actualGlobalRealPct,
+        avance_variance: actualGlobalRealPct - (totalActualHH > 0 ? (totalActualPlannedWeighted / totalActualHH) : 0),
+        total_hh_ppto: totalActualHH,
+        total_hh_ganadas: totalActualEarned,
+        cpi: globalCPI
+      };
+      
+      DASHBOARD_DATA.kpi.weekly_progress_gain = weeklyProgressGain;
+      DASHBOARD_DATA.kpi.weekly_earned_hh_gain = weeklyEarnedHHGain;
+
+      // Reset filters and update dashboard
+      document.getElementById('search-box').value = '';
+      document.getElementById('filter-discipline').value = 'all';
+      document.getElementById('filter-type').value = 'all';
+      document.getElementById('filter-status').value = 'all';
+
+      // Repopulate disciplines select
+      const disciplinesSet = new Set();
+      DASHBOARD_DATA.all_items.forEach(item => {
+        if (item.discipline) {
+          disciplinesSet.add(item.discipline);
+        }
+      });
+      const discSelect = document.getElementById('filter-discipline');
+      discSelect.innerHTML = '<option value="all">Todas las Disciplinas</option>';
+      const sortedDisciplines = Array.from(disciplinesSet).sort();
+      sortedDisciplines.forEach(disc => {
+        discSelect.innerHTML += `<option value="${disc}">${disc}</option>`;
+      });
+
+      refreshDashboard();
+      generateSeniorPlannerMemo();
+      renderWowComparison();
+
+      document.getElementById('download-json-btn').style.display = 'inline-block';
+    }
+
+    function generateSeniorPlannerMemo() {
+      const memoElement = document.getElementById('senior-planner-memo');
+      if (!memoElement) return;
+
+      const planProgress = DASHBOARD_DATA.kpi.semana_actual.avance_programado;
+      const realProgress = DASHBOARD_DATA.kpi.semana_actual.avance_real;
+      const variance = realProgress - planProgress;
+      const cpi = DASHBOARD_DATA.kpi.semana_actual.cpi !== undefined ? DASHBOARD_DATA.kpi.semana_actual.cpi : (DASHBOARD_DATA.kpi.semana_actual.hh_efficiency || 1.0);
+      
+      const numSlips = DASHBOARD_DATA.weekly_slips.length;
+      const totalSlipsDays = DASHBOARD_DATA.weekly_slips.reduce((sum, item) => sum + item.slip_days, 0);
+      const totalDelayed = DASHBOARD_DATA.delayed_items.length;
+      
+      let alertClass = "alert-highlight";
+      let statusIcon = "⚠️ ALERTA DE CONTROL:";
+      let alertMsg = "";
+
+      if (variance < -0.05) {
+        alertClass = "critical-alert";
+        statusIcon = "🚨 ALERTA CRÍTICA:";
+        alertMsg = `El desvío físico del proyecto se encuentra en un nivel crítico de <strong>${(variance * 100).toFixed(1)}%</strong> por debajo del programa vigente (Plan: ${(planProgress * 100).toFixed(1)}% vs Real: ${(realProgress * 100).toFixed(1)}%).`;
+      } else if (variance < 0) {
+        alertMsg = `El desvío físico del proyecto presenta una desviación negativa leve de <strong>${(variance * 100).toFixed(1)}%</strong> respecto al plan (Plan: ${(planProgress * 100).toFixed(1)}% vs Real: ${(realProgress * 100).toFixed(1)}%).`;
+      } else {
+        alertClass = "alert-highlight";
+        statusIcon = "✅ DESEMPEÑO POSITIVO:";
+        alertMsg = `El proyecto muestra un desempeño favorable con un avance real de <strong>${(realProgress * 100).toFixed(1)}%</strong>, superando el planificado de ${(planProgress * 100).toFixed(1)}% (+${(variance * 100).toFixed(1)}%).`;
+      }
+
+      let cpiMsg = "";
+      if (cpi < 0.90) {
+        cpiMsg = `La eficiencia de Horas Hombre (CPI: <strong>${cpi.toFixed(2)}</strong>) está por debajo del umbral de control (0.90), indicando una alta tasa de sobreconsumo de recursos para el avance físico logrado. Se requiere una auditoría inmediata a los rendimientos del contratista.`;
+      } else if (cpi < 1.0) {
+        cpiMsg = `La eficiencia de Horas Hombre (CPI: <strong>${cpi.toFixed(2)}</strong>) se encuentra en rango tolerable pero con tendencia a la baja. Se recomienda monitorear estrechamente las disciplinas con mayor consumo de HH.`;
+      } else {
+        cpiMsg = `La eficiencia de Horas Hombre (CPI: <strong>${cpi.toFixed(2)}</strong>) es sobresaliente, indicando que se ha devengado más valor físico que el presupuesto de HH invertido.`;
+      }
+
+      let slipMsg = "";
+      if (numSlips > 0) {
+        slipMsg = `Esta semana se identificaron <strong>${numSlips} actividades con atrasos en su fecha de Forecast</strong> respecto al reporte anterior, acumulando una pérdida neta de <strong>${totalSlipsDays} días de holgura</strong>. Los mayores desvíos semanales se registran en disciplinas críticas que amenazan la ruta del proyecto.`;
+      } else {
+        slipMsg = `No se registran desvíos adicionales de forecast en comparación con la semana anterior. Las estimaciones de término se mantienen estables.`;
+      }
+
+      let topDelayedDisc = "";
+      let topDelayedDays = 0;
+      
+      const discMap = {};
+      DASHBOARD_DATA.delayed_items.forEach(d => {
+        if (!discMap[d.discipline]) discMap[d.discipline] = 0;
+        discMap[d.discipline] += d.slippage_days;
+      });
+      
+      for (const disc in discMap) {
+        if (discMap[disc] > topDelayedDays) {
+          topDelayedDays = discMap[disc];
+          topDelayedDisc = disc;
+        }
+      }
+
+      let topDelayedMsg = "";
+      if (topDelayedDisc) {
+        topDelayedMsg = `La disciplina de <strong>${topDelayedDisc}</strong> registra el mayor impacto acumulado de desviaciones, sumando un desfase total de <strong>${topDelayedDays} días</strong> en sus entregables.`;
+      }
+
+      memoElement.innerHTML = `
+        <p>
+          Estimada Gerencia: Como <strong>Planificador Senior del Proyecto</strong>, presento el análisis correspondiente a la semana de reporte del <strong>${formatDate(STATUS_DATE)}</strong>. 
+        </p>
+        <div class="${alertClass}">
+          <strong>${statusIcon}</strong> ${alertMsg} ${cpiMsg}
+        </div>
+        <p>
+          ${slipMsg} Actualmente, existen <strong>${totalDelayed} entregables en el plan actual que muestran desviaciones acumuladas</strong> (Forecast Finish > Plan Finish). 
+          ${topDelayedMsg}
+        </p>
+        <p><strong>Recomendaciones y Acciones de Mitigación Sugeridas:</strong></p>
+        <ul>
+          <li><strong>Optimización de Recursos:</strong> Acelerar la revisión técnica interna y la aprobación de entregables en la disciplina de <strong>${topDelayedDisc || 'Ruta Crítica'}</strong> para contener los desplazamientos en cascada.</li>
+          <li><strong>Recuperación de Plazos:</strong> Exigir al contratista un plan de mitigación ("recovery schedule") para las actividades con más de 15 días de atraso, priorizando el soporte de HH en el tramo final de aprobación.</li>
+          <li><strong>Sincronización de Forecasts:</strong> Validar si los retrasos semanales reportados se deben a demoras en la entrega de información base por parte del cliente o a rendimientos deficientes del equipo de diseño.</li>
+        </ul>
+      `;
+    }
+
+    function renderWowComparison() {
+      const wowContent = document.getElementById('wow-comparison-content');
+      if (!wowContent) return;
+
+      const weeklySlipsCount = DASHBOARD_DATA.weekly_slips.length;
+      const totalSlipsDays = DASHBOARD_DATA.weekly_slips.reduce((sum, item) => sum + item.slip_days, 0);
+      const progressGainsCount = DASHBOARD_DATA.progress_gains.length;
+      const totalProgressGain = DASHBOARD_DATA.kpi.weekly_progress_gain * 100;
+      
+      const newActivitiesCount = (DASHBOARD_DATA.new_items || []).length;
+      const deletedActivitiesCount = (DASHBOARD_DATA.deleted_items || []).length;
+
+      let html = `
+        <div class="wow-summary-grid">
+          <div class="wow-summary-card">
+            <h4 style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px;">Forecast Slippage (Desvíos WoW)</h4>
+            <div class="val" style="color: var(--color-rose); font-size: 15px; font-weight: 700;">${weeklySlipsCount} tareas (${totalSlipsDays} días total)</div>
+          </div>
+          <div class="wow-summary-card">
+            <h4 style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px;">Progreso Físico WoW</h4>
+            <div class="val" style="color: var(--color-emerald); font-size: 15px; font-weight: 700;">+${totalProgressGain.toFixed(2)}% (+${progressGainsCount} tareas)</div>
+          </div>
+          <div class="wow-summary-card">
+            <h4 style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px;">Nuevas Incorporaciones</h4>
+            <div class="val" style="color: var(--color-sky); font-size: 15px; font-weight: 700;">${newActivitiesCount} agregadas</div>
+          </div>
+          <div class="wow-summary-card">
+            <h4 style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px;">Actividades Eliminadas</h4>
+            <div class="val" style="color: var(--text-muted); font-size: 15px; font-weight: 700;">${deletedActivitiesCount} eliminadas</div>
+          </div>
+        </div>
+
+        <div class="wow-sec-title">⚠️ Grandes Desviaciones en Forecast (Semana Pasada vs Actual)</div>
+        <div class="table-wrapper" style="max-height: 180px; margin-bottom: 15px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Cód. CMDIC</th>
+                <th>Activity ID</th>
+                <th>Descripción</th>
+                <th>Fct. Anterior</th>
+                <th>Fct. Nuevo</th>
+                <th>Desvío</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      if (DASHBOARD_DATA.weekly_slips.length === 0) {
+        html += `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No se registran cambios de forecast esta semana.</td></tr>`;
+      } else {
+        DASHBOARD_DATA.weekly_slips.slice(0, 10).forEach(s => {
+          html += `
+            <tr>
+              <td><code style="font-size: 11px;">${s.cmdic_code || '-'}</code></td>
+              <td><strong>${s.activity_id}</strong></td>
+              <td>${s.description}</td>
+              <td>${s.old_forecast ? formatDate(parseDate(s.old_forecast)) : '-'}</td>
+              <td class="color-rose"><strong>${s.new_forecast ? formatDate(parseDate(s.new_forecast)) : '-'}</strong></td>
+              <td><span class="badge danger">+${s.slip_days} d</span></td>
+            </tr>
+          `;
+        });
+      }
+
+      html += `
+            </tbody>
+          </table>
+        </div>
+
+        <div class="wow-sec-title">📈 Mayores Avances Reales (Real Semana Pasada vs Real Actual)</div>
+        <div class="table-wrapper" style="max-height: 180px; margin-bottom: 15px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Cód. CMDIC</th>
+                <th>Activity ID</th>
+                <th>Descripción</th>
+                <th>Avance Ant.</th>
+                <th>Avance Act.</th>
+                <th>Ganancia</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      if (DASHBOARD_DATA.progress_gains.length === 0) {
+        html += `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No se registran avances físicos esta semana.</td></tr>`;
+      } else {
+        DASHBOARD_DATA.progress_gains.slice(0, 10).forEach(g => {
+          html += `
+            <tr>
+              <td><code style="font-size: 11px;">${g.cmdic_code || '-'}</code></td>
+              <td><strong>${g.activity_id}</strong></td>
+              <td>${g.description}</td>
+              <td>${formatPct(g.old_avance_real)}</td>
+              <td><strong>${formatPct(g.new_avance_real)}</strong></td>
+              <td><span class="badge success">+${formatPct(g.diff)}</span></td>
+            </tr>
+          `;
+        });
+      }
+
+      html += `
+            </tbody>
+          </table>
+        </div>
+
+        <div class="wow-sec-title">Scope Changes: Cambios en WBS/Línea Base</div>
+        <div class="table-wrapper" style="max-height: 150px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Cód. CMDIC</th>
+                <th>Activity ID</th>
+                <th>Descripción</th>
+                <th>Disciplina</th>
+                <th>HH Ppto</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      let hasScopeChanges = false;
+      if (DASHBOARD_DATA.new_items && DASHBOARD_DATA.new_items.length > 0) {
+        hasScopeChanges = true;
+        DASHBOARD_DATA.new_items.forEach(n => {
+          html += `
+            <tr>
+              <td><span class="scope-tag new">NUEVA</span></td>
+              <td><code style="font-size: 11px;">${n.cmdic_code || '-'}</code></td>
+              <td><strong>${n.activity_id}</strong></td>
+              <td>${n.description}</td>
+              <td><span class="badge info">${n.discipline}</span></td>
+              <td>${formatNumber(n.hh_ppto, 0)}</td>
+            </tr>
+          `;
+        });
+      }
+
+      if (DASHBOARD_DATA.deleted_items && DASHBOARD_DATA.deleted_items.length > 0) {
+        hasScopeChanges = true;
+        DASHBOARD_DATA.deleted_items.forEach(d => {
+          html += `
+            <tr>
+              <td><span class="scope-tag deleted">ELIMINADA</span></td>
+              <td><code style="font-size: 11px;">${d.cmdic_code || '-'}</code></td>
+              <td><strong>${d.activity_id}</strong></td>
+              <td>${d.description}</td>
+              <td><span class="badge info">${d.discipline}</span></td>
+              <td>${formatNumber(d.hh_ppto, 0)}</td>
+            </tr>
+          `;
+        });
+      }
+
+      if (!hasScopeChanges) {
+        html += `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin cambios detectados en el alcance o WBS.</td></tr>`;
+      }
+
+      html += `
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      wowContent.innerHTML = html;
+    }
+
+    // Client-side S-Curve Calculation based on active filters
+    function generateDynamicSCurve(filteredItems) {
+      const monthLabels = DASHBOARD_DATA.s_curve.labels;
+      
+      // Parse month-end dates from labels
+      const months = monthLabels.map(label => {
+        const parts = label.split('-');
+        const y = parseInt(parts[0]);
+        const m = parseInt(parts[1]);
+        if (m === 12) {
+          return new Date(y, 11, 31);
+        } else {
+          return new Date(new Date(y, m, 1).getTime() - 86400000);
+        }
+      });
+
+      const plannedCumHH = new Array(months.length).fill(0.0);
+      const forecastCumHH = new Array(months.length).fill(0.0);
+      const actualCumHH = new Array(months.length).fill(0.0);
+      
+      let totalHH = 0;
+      filteredItems.forEach(item => {
+        if (item.activity_id) {
+          totalHH += item.hh_total_ppto;
+        }
+      });
+      
+      if (totalHH === 0) totalHH = 1.0;
+
+      filteredItems.forEach(x => {
+        if (!x.activity_id) return;
+        const hh = x.hh_total_ppto;
+        if (hh <= 0) return;
+
+        // 1. Planned Progress
+        const pStart = parseDate(x.plan.inicio);
+        const pEnd = parseDate(x.plan.aprobacion_revp);
+        
+        if (pStart && pEnd) {
+          const pDur = (pEnd - pStart) / 86400000;
+          months.forEach((mDate, idx) => {
+            if (mDate < pStart) {
+              // 0%
+            } else if (mDate >= pEnd) {
+              plannedCumHH[idx] += hh;
+            } else {
+              const pct = ((mDate - pStart) / 86400000) / (pDur || 1);
+              plannedCumHH[idx] += pct * hh;
+            }
+          });
+        } else {
+          const pEndAlt = pEnd || STATUS_DATE;
+          months.forEach((mDate, idx) => {
+            if (mDate >= pEndAlt) plannedCumHH[idx] += hh;
+          });
+        }
+
+        // 2. Forecast Progress
+        const fStart = parseDate(x.forecast.inicio) || pStart;
+        const fEnd = parseDate(x.forecast.aprobacion_revp) || pEnd;
+        
+        if (fStart && fEnd) {
+          const fDur = (fEnd - fStart) / 86400000;
+          months.forEach((mDate, idx) => {
+            if (mDate < fStart) {
+              // 0%
+            } else if (mDate >= fEnd) {
+              forecastCumHH[idx] += hh;
+            } else {
+              const pct = ((mDate - fStart) / 86400000) / (fDur || 1);
+              forecastCumHH[idx] += pct * hh;
+            }
+          });
+        } else {
+          const fEndAlt = fEnd || STATUS_DATE;
+          months.forEach((mDate, idx) => {
+            if (mDate >= fEndAlt) forecastCumHH[idx] += hh;
+          });
+        }
+
+        // 3. Actual Progress
+        const rStart = parseDate(x.real.inicio) || pStart;
+        const rEnd = parseDate(x.real.aprobacion_revp);
+        
+        let earnedHH = x.hh_total_ganadas;
+        if (earnedHH === 0 && x.avance_real > 0) {
+          earnedHH = x.avance_real * hh;
+        }
+
+        if (earnedHH > 0) {
+          if (x.avance_real >= 1.0 && rStart && rEnd) {
+            const rDur = (rEnd - rStart) / 86400000;
+            months.forEach((mDate, idx) => {
+              if (mDate < rStart) {
+                // 0%
+              } else if (mDate >= rEnd) {
+                actualCumHH[idx] += earnedHH;
+              } else {
+                const pct = ((mDate - rStart) / 86400000) / (rDur || 1);
+                actualCumHH[idx] += pct * earnedHH;
+              }
+            });
+          } else if (rStart) {
+            const rDur = (STATUS_DATE - rStart) / 86400000;
+            months.forEach((mDate, idx) => {
+              if (mDate < rStart) {
+                // 0%
+              } else if (mDate >= STATUS_DATE) {
+                actualCumHH[idx] += earnedHH;
+              } else {
+                const pct = ((mDate - rStart) / 86400000) / (rDur || 1);
+                actualCumHH[idx] += Math.min(pct, 1.0) * earnedHH;
+              }
+            });
+          } else {
+            months.forEach((mDate, idx) => {
+              if (mDate >= STATUS_DATE) {
+                actualCumHH[idx] += earnedHH;
+              }
+            });
+          }
+        }
+      });
+
+      // Convert to percentages
+      const plannedCumPct = plannedCumHH.map(val => parseFloat(((val / totalHH) * 100).toFixed(1)));
+      const forecastCumPct = forecastCumHH.map(val => parseFloat(((val / totalHH) * 100).toFixed(1)));
+      const actualCumPct = actualCumHH.map((val, idx) => {
+        if (months[idx] > STATUS_DATE) {
+          return null; // hide future actuals
+        }
+        return parseFloat(((val / totalHH) * 100).toFixed(1));
+      });
+
+      return {
+        labels: monthLabels,
+        planned: plannedCumPct,
+        forecast: forecastCumPct,
+        actual: actualCumPct
+      };
+    }
+
+    // Dynamic aggregations for charts & UI
+    function aggregateData(filteredItems) {
+      let totalHH = 0;
+      let totalEarnedHH = 0;
+      let totalPlannedWeighted = 0;
+      let totalActualWeighted = 0;
+      
+      let statusCounts = { completado: 0, proceso: 0, no_iniciado: 0 };
+      let typeCounts = { Documento: 0, Plano: 0, Actividad: 0 };
+      let delayedCount = 0;
+      
+      let disciplines = {};
+
+      filteredItems.forEach(x => {
+        if (!x.activity_id) return; // skip sections
+        
+        totalHH += x.hh_total_ppto;
+        totalEarnedHH += x.hh_total_ganadas;
+        totalPlannedWeighted += x.avance_programado * x.hh_total_ppto;
+        totalActualWeighted += x.avance_real * x.hh_total_ppto;
+
+        // Status
+        if (x.avance_real >= 1.0) statusCounts.completado++;
+        else if (x.avance_real > 0.0) statusCounts.proceso++;
+        else statusCounts.no_iniciado++;
+
+        // Type
+        if (typeCounts[x.type] !== undefined) typeCounts[x.type]++;
+
+        // Slippage Check
+        const pEnd = parseDate(x.plan.aprobacion_revp);
+        const fEnd = parseDate(x.forecast.aprobacion_revp) || pEnd;
+        if (pEnd && fEnd && fEnd > pEnd && x.avance_real < 1.0) {
+          delayedCount++;
+        }
+
+        // Discipline aggregation
+        const disc = x.discipline;
+        if (!disciplines[disc]) {
+          disciplines[disc] = {
+            name: disc,
+            count: 0,
+            completed: 0,
+            hh_ppto: 0,
+            hh_ganadas: 0,
+            avance_prog_weighted_sum: 0,
+            avance_real_weighted_sum: 0
+          };
+        }
+        const d = disciplines[disc];
+        d.count++;
+        d.hh_ppto += x.hh_total_ppto;
+        d.hh_ganadas += x.hh_total_ganadas;
+        d.avance_prog_weighted_sum += x.avance_programado * x.hh_total_ppto;
+        d.avance_real_weighted_sum += x.avance_real * x.hh_total_ppto;
+        if (x.avance_real >= 1.0) d.completed++;
+      });
+
+      const globalPlanned = totalHH > 0 ? (totalPlannedWeighted / totalHH) : 0;
+      const globalActual = totalHH > 0 ? (totalActualWeighted / totalHH) : 0;
+      const globalCPI = totalPlannedWeighted > 0 ? (totalEarnedHH / totalPlannedWeighted) : 1.0;
+
+      // Discipline array conversion
+      const disciplinesArray = Object.values(disciplines).map(d => {
+        const hh = d.hh_ppto;
+        return {
+          name: d.name,
+          count: d.count,
+          completed: d.completed,
+          hh_ppto: hh,
+          hh_ganadas: d.hh_ganadas,
+          avance_programado: hh > 0 ? d.avance_prog_weighted_sum / hh : 0,
+          avance_real: hh > 0 ? d.avance_real_weighted_sum / hh : 0,
+          desviacion: hh > 0 ? (d.avance_real_weighted_sum - d.avance_prog_weighted_sum) / hh : 0
+        };
+      }).sort((a, b) => b.hh_ppto - a.hh_ppto);
+
+      return {
+        totalHH,
+        totalEarnedHH,
+        globalPlanned,
+        globalActual,
+        globalCPI,
+        statusCounts,
+        typeCounts,
+        delayedCount,
+        disciplines: disciplinesArray
+      };
+    }
+
+    // Refresh Dashboard UI and Charts
+    function refreshDashboard() {
+      // 1. Get filtered items
+      const searchVal = document.getElementById('search-box').value.trim().toLowerCase();
+      const discVal = document.getElementById('filter-discipline').value;
+      const typeVal = document.getElementById('filter-type').value;
+      const statusVal = document.getElementById('filter-status').value;
+
+      currentFilteredItems = DASHBOARD_DATA.all_items.filter(item => {
+        // We only filter activities, keep sections out of calculations but display them conditionally
+        if (!item.activity_id) return false;
+        
+        // Search filter (ID, CMDIC, Description)
+        if (searchVal) {
+          const matchId = item.activity_id && item.activity_id.toLowerCase().includes(searchVal);
+          const matchCmdic = item.cmdic_code && item.cmdic_code.toLowerCase().includes(searchVal);
+          const matchDesc = item.description && item.description.toLowerCase().includes(searchVal);
+          if (!matchId && !matchCmdic && !matchDesc) return false;
+        }
+
+        // Discipline filter
+        if (discVal !== 'all' && item.discipline !== discVal) return false;
+
+        // Type filter
+        if (typeVal !== 'all' && item.type !== typeVal) return false;
+
+        // Status filter
+        if (statusVal !== 'all') {
+          if (statusVal === 'completado') return item.avance_real >= 1.0;
+          if (statusVal === 'proceso') return item.avance_real > 0.0 && item.avance_real < 1.0;
+          if (statusVal === 'no_iniciado') return item.avance_real === 0.0;
+          if (statusVal === 'delayed') {
+            const pEnd = parseDate(item.plan.aprobacion_revp);
+            const fEnd = parseDate(item.forecast.aprobacion_revp) || pEnd;
+            return pEnd && fEnd && fEnd > pEnd && item.avance_real < 1.0;
+          }
+        }
+
+        return true;
+      });
+
+      // 2. Perform aggregations
+      const summary = aggregateData(currentFilteredItems);
+
+      // 3. Update KPI values
+      document.getElementById('kpi-progress-real').textContent = formatPct(summary.globalActual);
+      document.getElementById('kpi-progress-plan').textContent = formatPct(summary.globalPlanned);
+      
+      const variance = summary.globalActual - summary.globalPlanned;
+      const varianceBadge = document.getElementById('kpi-progress-diff-badge');
+      varianceBadge.textContent = (variance >= 0 ? '+' : '') + (variance * 100).toFixed(1) + '% var';
+      varianceBadge.className = 'trend-badge ' + (variance >= 0 ? 'up' : 'down');
+
+      document.getElementById('kpi-cpi').textContent = summary.globalCPI.toFixed(2);
+      document.getElementById('kpi-hh-earned').textContent = formatNumber(summary.totalEarnedHH, 0) + ' HH';
+      document.getElementById('kpi-hh-budget').textContent = formatNumber(summary.totalHH, 0) + ' HH';
+      
+      const cpiBadge = document.getElementById('kpi-cpi-badge');
+      if (summary.globalCPI >= 1.0) {
+        cpiBadge.textContent = 'Eficiente (≥1)';
+        cpiBadge.className = 'trend-badge up';
+      } else if (summary.globalCPI >= 0.9) {
+        cpiBadge.textContent = 'En Rango (≥0.9)';
+        cpiBadge.className = 'trend-badge neutral';
+      } else {
+        cpiBadge.textContent = 'Crítico (<0.9)';
+        cpiBadge.className = 'trend-badge down';
+      }
+
+      document.getElementById('kpi-slippage-count').textContent = summary.delayedCount;
+      const slippageSubtext = document.getElementById('kpi-slippage-badge');
+      slippageSubtext.textContent = `${summary.delayedCount} en atraso`;
+      slippageSubtext.className = 'trend-badge ' + (summary.delayedCount === 0 ? 'up' : 'down');
+
+      // Weekly variation: calculated comparing with Semana Pasada
+      const weeklyProg = DASHBOARD_DATA.kpi.weekly_progress_gain;
+      document.getElementById('kpi-weekly-progress').textContent = (weeklyProg >= 0 ? '+' : '') + formatPct(weeklyProg);
+      document.getElementById('kpi-weekly-earned-hh').textContent = '+' + formatNumber(DASHBOARD_DATA.kpi.weekly_earned_hh_gain, 0) + ' HH ganadas';
+
+      // 4. Redraw charts
+      updateCharts(summary, generateDynamicSCurve(currentFilteredItems));
+
+      // 5. Update Tables
+      renderFilteredTables();
+
+      // 6. Detailed Activities Pagination
+      currentPage = 1;
+      renderDetailedActivities();
+    }
+
+    // Table Rendering
+    function renderFilteredTables() {
+      // Table: Weekly Slips
+      const weeklySlipsBody = document.querySelector('#table-weekly-slips-content tbody');
+      weeklySlipsBody.innerHTML = '';
+      
+      // Filter weekly slips based on active filters
+      const discVal = document.getElementById('filter-discipline').value;
+      const typeVal = document.getElementById('filter-type').value;
+      const searchVal = document.getElementById('search-box').value.trim().toLowerCase();
+
+      const filteredWeeklySlips = DASHBOARD_DATA.weekly_slips.filter(s => {
+        if (discVal !== 'all' && s.discipline !== discVal) return false;
+        if (typeVal !== 'all' && s.type !== typeVal) return false;
+        if (searchVal) {
+          const matchId = s.activity_id && s.activity_id.toLowerCase().includes(searchVal);
+          const matchCmdic = s.cmdic_code && s.cmdic_code.toLowerCase().includes(searchVal);
+          const matchDesc = s.description && s.description.toLowerCase().includes(searchVal);
+          if (!matchId && !matchCmdic && !matchDesc) return false;
+        }
+        return true;
+      });
+
+      if (filteredWeeklySlips.length === 0) {
+        weeklySlipsBody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Sin desvíos en el período o filtros aplicados.</td></tr>';
+      } else {
+        filteredWeeklySlips.forEach(s => {
+          weeklySlipsBody.innerHTML += `
+            <tr>
+              <td><code style="font-size: 11px;">${s.cmdic_code || '-'}</code></td>
+              <td><strong>${s.activity_id}</strong></td>
+              <td>${s.description}</td>
+              <td><span class="badge info">${s.discipline}</span></td>
+              <td>${s.old_forecast ? formatDate(parseDate(s.old_forecast)) : '-'}</td>
+              <td class="color-rose"><strong>${s.new_forecast ? formatDate(parseDate(s.new_forecast)) : '-'}</strong></td>
+              <td><span class="badge danger">+${s.slip_days} días</span></td>
+            </tr>
+          `;
+        });
+      }
+
+      // Table: Cumulative Delayed
+      const cumDelayedBody = document.querySelector('#table-cum-delayed-content tbody');
+      cumDelayedBody.innerHTML = '';
+      const filteredCumDelayed = DASHBOARD_DATA.delayed_items.filter(d => {
+        if (discVal !== 'all' && d.discipline !== discVal) return false;
+        if (typeVal !== 'all' && d.type !== typeVal) return false;
+        if (searchVal) {
+          const matchId = d.activity_id && d.activity_id.toLowerCase().includes(searchVal);
+          const matchCmdic = d.cmdic_code && d.cmdic_code.toLowerCase().includes(searchVal);
+          const matchDesc = d.description && d.description.toLowerCase().includes(searchVal);
+          if (!matchId && !matchCmdic && !matchDesc) return false;
+        }
+        return true;
+      });
+
+      if (filteredCumDelayed.length === 0) {
+        cumDelayedBody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Sin retrasos acumulados en el plan.</td></tr>';
+      } else {
+        filteredCumDelayed.forEach(d => {
+          cumDelayedBody.innerHTML += `
+            <tr>
+              <td><code style="font-size: 11px;">${d.cmdic_code || '-'}</code></td>
+              <td><strong>${d.activity_id}</strong></td>
+              <td>${d.description}</td>
+              <td><span class="badge info">${d.discipline}</span></td>
+              <td>${formatDate(parseDate(d.plan_end))}</td>
+              <td>${formatDate(parseDate(d.forecast_end))}</td>
+              <td><span class="badge danger">${d.slippage_days} días</span></td>
+            </tr>
+          `;
+        });
+      }
+
+      // Table: Weekly Progress Gains
+      const progressGainsBody = document.querySelector('#table-progress-gains-content tbody');
+      progressGainsBody.innerHTML = '';
+      const filteredGains = DASHBOARD_DATA.progress_gains.filter(g => {
+        if (discVal !== 'all' && g.discipline !== discVal) return false;
+        if (typeVal !== 'all' && g.type !== typeVal) return false;
+        if (searchVal) {
+          const matchId = g.activity_id && g.activity_id.toLowerCase().includes(searchVal);
+          const matchCmdic = g.cmdic_code && g.cmdic_code.toLowerCase().includes(searchVal);
+          const matchDesc = g.description && g.description.toLowerCase().includes(searchVal);
+          if (!matchId && !matchCmdic && !matchDesc) return false;
+        }
+        return true;
+      });
+
+      if (filteredGains.length === 0) {
+        progressGainsBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin avance registrado esta semana.</td></tr>';
+      } else {
+        filteredGains.forEach(g => {
+          progressGainsBody.innerHTML += `
+            <tr>
+              <td><code style="font-size: 11px;">${g.cmdic_code || '-'}</code></td>
+              <td><strong>${g.activity_id}</strong></td>
+              <td>${g.description}</td>
+              <td>${formatPct(g.old_avance_real)}</td>
+              <td><strong>${formatPct(g.new_avance_real)}</strong></td>
+              <td><span class="badge success">+${formatPct(g.diff)}</span></td>
+            </tr>
+          `;
+        });
+      }
+
+      // Render WoW Tab
+      renderWowComparison();
+    }
+
+    // Detailed Activities Table with Pagination
+    function renderDetailedActivities() {
+      const detailedBody = document.querySelector('#table-detailed-activities tbody');
+      detailedBody.innerHTML = '';
+      
+      const totalCount = currentFilteredItems.length;
+      document.getElementById('table-record-count').textContent = `Mostrando ${totalCount} entregables / actividades`;
+
+      if (totalCount === 0) {
+        detailedBody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding: 40px; color:var(--text-muted);">Ninguna actividad coincide con los filtros aplicados.</td></tr>';
+        document.getElementById('pagination-info').textContent = 'Página 0 de 0';
+        document.getElementById('btn-prev-page').disabled = true;
+        document.getElementById('btn-next-page').disabled = true;
+        return;
+      }
+
+      const totalPages = Math.ceil(totalCount / itemsPerPage);
+      if (currentPage > totalPages) currentPage = totalPages;
+      if (currentPage < 1) currentPage = 1;
+
+      const startIndex = (currentPage - 1) * itemsPerPage;
+      const endIndex = Math.min(startIndex + itemsPerPage, totalCount);
+
+      const itemsToShow = currentFilteredItems.slice(startIndex, endIndex);
+
+      itemsToShow.forEach(x => {
+        let statusBadge = '';
+        if (x.avance_real >= 1.0) {
+          statusBadge = '<span class="badge success">Completado</span>';
+        } else if (x.avance_real > 0) {
+          statusBadge = '<span class="badge warning">En Desarrollo</span>';
+        } else {
+          statusBadge = '<span class="badge info">Sin Iniciar</span>';
+        }
+
+        detailedBody.innerHTML += `
+          <tr>
+            <td><strong>${x.activity_id || '-'}</strong></td>
+            <td><code style="font-size: 11px;">${x.cmdic_code || '-'}</code></td>
+            <td>${x.description}</td>
+            <td><span class="badge info" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);">${x.discipline}</span></td>
+            <td>${x.type}</td>
+            <td>${formatNumber(x.hh_total_ppto, 0)}</td>
+            
+            <td>
+              <div class="progress-bar-cell">
+                <div class="progress-track">
+                  <div class="progress-fill planned" style="width: ${x.avance_programado * 100}%"></div>
+                </div>
+                <div class="progress-text">${(x.avance_programado * 100).toFixed(0)}%</div>
+              </div>
+            </td>
+            
+            <td>
+              <div class="progress-bar-cell">
+                <div class="progress-track">
+                  <div class="progress-fill real" style="width: ${x.avance_real * 100}%"></div>
+                </div>
+                <div class="progress-text">${(x.avance_real * 100).toFixed(0)}%</div>
+              </div>
+            </td>
+            
+            <td>${x.real.inicio ? formatDate(parseDate(x.real.inicio)) : '-'}</td>
+            <td>${x.forecast.aprobacion_revp ? formatDate(parseDate(x.forecast.aprobacion_revp)) : formatDate(parseDate(x.plan.aprobacion_revp))}</td>
+            <td>${statusBadge}</td>
+          </tr>
+        `;
+      });
+
+      document.getElementById('pagination-info').textContent = `Página ${currentPage} de ${totalPages}`;
+      document.getElementById('btn-prev-page').disabled = currentPage === 1;
+      document.getElementById('btn-next-page').disabled = currentPage === totalPages;
+    }
+
+    // Chart.js Implementations and Updates
+    function updateCharts(summary, sCurveData) {
+      const isSCurveChanged = sCurveChart !== null;
+
+      // 1. Update S-Curve Chart
+      if (sCurveChart) sCurveChart.destroy();
+      const ctxSCurve = document.getElementById('sCurveChart').getContext('2d');
+      sCurveChart = new Chart(ctxSCurve, {
+        type: 'line',
+        data: {
+          labels: sCurveData.labels,
+          datasets: [
+            {
+              label: 'Avance Planificado (%)',
+              data: sCurveData.planned,
+              borderColor: '#6366f1',
+              backgroundColor: 'rgba(99, 102, 241, 0.05)',
+              borderWidth: 2.5,
+              tension: 0.15,
+              fill: true
+            },
+            {
+              label: 'Avance Forecast (%)',
+              data: sCurveData.forecast,
+              borderColor: '#f59e0b',
+              borderDash: [5, 5],
+              backgroundColor: 'transparent',
+              borderWidth: 2,
+              tension: 0.15
+            },
+            {
+              label: 'Avance Real (Earned %)',
+              data: sCurveData.actual,
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              borderWidth: 3,
+              pointBackgroundColor: '#10b981',
+              pointRadius: 4,
+              tension: 0.15,
+              fill: true
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', size: 11 } }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) { return `${context.dataset.label}: ${context.parsed.y}%`; }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255, 255, 255, 0.03)' },
+              ticks: { color: '#64748b', font: { size: 10 } }
+            },
+            y: {
+              max: 100,
+              min: 0,
+              grid: { color: 'rgba(255, 255, 255, 0.03)' },
+              ticks: { color: '#64748b', callback: value => value + '%' }
+            }
+          }
+        }
+      });
+
+      // 2. Status Breakdown Chart
+      if (statusBreakdownChart) statusBreakdownChart.destroy();
+      const ctxBreakdown = document.getElementById('statusBreakdownChart').getContext('2d');
+      
+      const statusLabels = ['Completados', 'En Desarrollo', 'Sin Iniciar'];
+      const statusData = [summary.statusCounts.completado, summary.statusCounts.proceso, summary.statusCounts.no_iniciado];
+      
+      statusBreakdownChart = new Chart(ctxBreakdown, {
+        type: 'doughnut',
+        data: {
+          labels: statusLabels,
+          datasets: [{
+            data: statusData,
+            backgroundColor: ['#10b981', '#f59e0b', '#0ea5e9'],
+            borderColor: '#131b2e',
+            borderWidth: 2,
+            hoverOffset: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', size: 11 } }
+            }
+          },
+          cutout: '70%'
+        }
+      });
+
+      // 3. Progress by Discipline Chart
+      if (progressByDisciplineChart) progressByDisciplineChart.destroy();
+      const ctxProgDisc = document.getElementById('progressByDisciplineChart').getContext('2d');
+      
+      // Take top 8 disciplines by HH size
+      const topDisciplines = summary.disciplines.slice(0, 8);
+      const discLabels = topDisciplines.map(d => d.name);
+      const discPlanned = topDisciplines.map(d => parseFloat((d.avance_programado * 100).toFixed(1)));
+      const discActual = topDisciplines.map(d => parseFloat((d.avance_real * 100).toFixed(1)));
+
+      progressByDisciplineChart = new Chart(ctxProgDisc, {
+        type: 'bar',
+        data: {
+          labels: discLabels,
+          datasets: [
+            {
+              label: 'Avance Programado (%)',
+              data: discPlanned,
+              backgroundColor: 'rgba(99, 102, 241, 0.4)',
+              borderColor: '#6366f1',
+              borderWidth: 1
+            },
+            {
+              label: 'Avance Real (%)',
+              data: discActual,
+              backgroundColor: 'rgba(16, 185, 129, 0.8)',
+              borderColor: '#10b981',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', size: 11 } }
+            }
+          },
+          scales: {
+            x: {
+              max: 100,
+              grid: { color: 'rgba(255, 255, 255, 0.03)' },
+              ticks: { color: '#64748b', callback: value => value + '%' }
+            },
+            y: {
+              grid: { color: 'transparent' },
+              ticks: { color: '#94a3b8', font: { size: 10 } }
+            }
+          }
+        }
+      });
+
+      // 4. HH Allocation Chart
+      if (hhByDisciplineChart) hhByDisciplineChart.destroy();
+      const ctxHhDisc = document.getElementById('hhByDisciplineChart').getContext('2d');
+      
+      const discHhPpto = topDisciplines.map(d => d.hh_ppto);
+      const discHhEarned = topDisciplines.map(d => d.hh_ganadas);
+
+      hhByDisciplineChart = new Chart(ctxHhDisc, {
+        type: 'bar',
+        data: {
+          labels: discLabels,
+          datasets: [
+            {
+              label: 'HH Presupuestadas',
+              data: discHhPpto,
+              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              borderColor: 'rgba(255, 255, 255, 0.1)',
+              borderWidth: 1
+            },
+            {
+              label: 'HH Ganadas (Earned Value)',
+              data: discHhEarned,
+              backgroundColor: 'rgba(245, 158, 11, 0.8)',
+              borderColor: '#f59e0b',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', size: 11 } }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'transparent' },
+              ticks: { color: '#94a3b8', font: { size: 10 } }
+            },
+            y: {
+              grid: { color: 'rgba(255, 255, 255, 0.03)' },
+              ticks: { color: '#64748b' }
+            }
+          }
+        }
+      });
+    }
+
+    // Document Initialization and Dynamic Dropdowns
+    window.addEventListener('DOMContentLoaded', () => {
+      // 1. Populate Discipline filter dynamically
+      const disciplinesSet = new Set();
+      DASHBOARD_DATA.all_items.forEach(item => {
+        if (item.discipline) {
+          disciplinesSet.add(item.discipline);
+        }
+      });
+
+      const discSelect = document.getElementById('filter-discipline');
+      const sortedDisciplines = Array.from(disciplinesSet).sort();
+      sortedDisciplines.forEach(disc => {
+        discSelect.innerHTML += `<option value="${disc}">${disc}</option>`;
+      });
+
+      // 2. Hook up filter events
+      document.getElementById('search-box').addEventListener('input', refreshDashboard);
+      document.getElementById('filter-discipline').addEventListener('change', refreshDashboard);
+      document.getElementById('filter-type').addEventListener('change', refreshDashboard);
+      document.getElementById('filter-status').addEventListener('change', refreshDashboard);
+      
+      document.getElementById('clear-filters-btn').addEventListener('click', () => {
+        document.getElementById('search-box').value = '';
+        document.getElementById('filter-discipline').value = 'all';
+        document.getElementById('filter-type').value = 'all';
+        document.getElementById('filter-status').value = 'all';
+        refreshDashboard();
+      });
+
+      // Tabs switcher for desvíos
+      document.getElementById('tab-weekly-slips').addEventListener('click', (e) => {
+        document.getElementById('tab-weekly-slips').classList.add('active');
+        document.getElementById('tab-cum-delayed').classList.remove('active');
+        document.getElementById('tab-wow-comparison').classList.remove('active');
+        document.getElementById('table-weekly-slips-content').style.display = 'table';
+        document.getElementById('table-cum-delayed-content').style.display = 'none';
+        document.getElementById('wow-comparison-content').style.display = 'none';
+      });
+
+      document.getElementById('tab-cum-delayed').addEventListener('click', (e) => {
+        document.getElementById('tab-weekly-slips').classList.remove('active');
+        document.getElementById('tab-cum-delayed').classList.add('active');
+        document.getElementById('tab-wow-comparison').classList.remove('active');
+        document.getElementById('table-weekly-slips-content').style.display = 'none';
+        document.getElementById('table-cum-delayed-content').style.display = 'table';
+        document.getElementById('wow-comparison-content').style.display = 'none';
+      });
+
+      document.getElementById('tab-wow-comparison').addEventListener('click', (e) => {
+        document.getElementById('tab-weekly-slips').classList.remove('active');
+        document.getElementById('tab-cum-delayed').classList.remove('active');
+        document.getElementById('tab-wow-comparison').classList.add('active');
+        document.getElementById('table-weekly-slips-content').style.display = 'none';
+        document.getElementById('table-cum-delayed-content').style.display = 'none';
+        document.getElementById('wow-comparison-content').style.display = 'block';
+      });
+
+      // Collapsible Excel Upload Widget Click Handler
+      const uploadHeader = document.getElementById('upload-panel-header');
+      const uploadPanel = document.getElementById('excel-upload-widget');
+      uploadHeader.addEventListener('click', () => {
+        uploadPanel.classList.toggle('expanded');
+      });
+
+      // Setup Drag-and-drop Excel Upload Zones
+      let actualWorkbookSheet = null;
+      let pasadaWorkbookSheet = null;
+
+      function setupUploadZone(zoneId, inputId, infoId, onFileLoaded) {
+        const zone = document.getElementById(zoneId);
+        const input = document.getElementById(inputId);
+        const info = document.getElementById(infoId);
+
+        zone.addEventListener('click', () => input.click());
+
+        zone.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          zone.classList.add('dragover');
+        });
+
+        zone.addEventListener('dragleave', () => {
+          zone.classList.remove('dragover');
+        });
+
+        zone.addEventListener('drop', (e) => {
+          e.preventDefault();
+          zone.classList.remove('dragover');
+          if (e.dataTransfer.files.length > 0) {
+            handleFile(e.dataTransfer.files[0]);
+          }
+        });
+
+        input.addEventListener('change', (e) => {
+          if (e.target.files.length > 0) {
+            handleFile(e.target.files[0]);
+          }
+        });
+
+        function handleFile(file) {
+          if (!file.name.endsWith('.xlsx')) {
+            alert('Por favor selecciona un archivo Excel válido (.xlsx)');
+            return;
+          }
+
+          info.textContent = `Leyendo: ${file.name}...`;
+          
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            try {
+              const data = new Uint8Array(e.target.result);
+              const workbook = XLSX.read(data, {type: 'array', cellDates: true, cellNF: true, cellStyles: true});
+              const sheetName = "EPR";
+              if (!workbook.SheetNames.includes(sheetName)) {
+                info.textContent = `Error: No existe la hoja '${sheetName}'`;
+                zone.classList.remove('success');
+                return;
+              }
+              const sheet = workbook.Sheets[sheetName];
+              onFileLoaded(sheet);
+              zone.classList.add('success');
+              info.textContent = `Cargado: ${file.name}`;
+              
+              const processBtn = document.getElementById('process-files-btn');
+              processBtn.disabled = !(actualWorkbookSheet && pasadaWorkbookSheet);
+            } catch (err) {
+              console.error(err);
+              info.textContent = `Error al parsear el archivo`;
+              zone.classList.remove('success');
+            }
+          };
+          reader.readAsArrayBuffer(file);
+        }
+      }
+
+      setupUploadZone('drop-zone-actual', 'file-actual', 'info-actual', (sheet) => {
+        actualWorkbookSheet = sheet;
+      });
+
+      setupUploadZone('drop-zone-pasada', 'file-pasada', 'info-pasada', (sheet) => {
+        pasadaWorkbookSheet = sheet;
+      });
+
+      document.getElementById('process-files-btn').addEventListener('click', () => {
+        if (!actualWorkbookSheet || !pasadaWorkbookSheet) return;
+        
+        const progress = document.getElementById('processing-progress');
+        const statusText = document.getElementById('processing-status-text');
+        progress.style.display = 'flex';
+        statusText.textContent = 'Procesando planillas Excel y recalculando KPIs WoW...';
+
+        setTimeout(() => {
+          try {
+            processUploadedExcels(actualWorkbookSheet, pasadaWorkbookSheet);
+            statusText.textContent = 'Dashboard actualizado con éxito!';
+            setTimeout(() => {
+              progress.style.display = 'none';
+            }, 2000);
+          } catch (err) {
+            console.error(err);
+            statusText.textContent = 'Error al procesar los datos: ' + err.message;
+          }
+        }, 300);
+      });
+
+      // Hook up download dashboard data JS button
+      document.getElementById('download-json-btn').addEventListener('click', () => {
+        const fileContent = "const DASHBOARD_DATA = " + JSON.stringify(DASHBOARD_DATA, null, 2) + ";\n";
+        const blob = new Blob([fileContent], {type: "application/javascript;charset=utf-8"});
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "dashboard_data.js";
+        link.click();
+      });
+
+      // Pagination events
+      document.getElementById('btn-prev-page').addEventListener('click', () => {
+        if (currentPage > 1) {
+          currentPage--;
+          renderDetailedActivities();
+        }
+      });
+
+      document.getElementById('btn-next-page').addEventListener('click', () => {
+        const totalCount = currentFilteredItems.length;
+        const totalPages = Math.ceil(totalCount / itemsPerPage);
+        if (currentPage < totalPages) {
+          currentPage++;
+          renderDetailedActivities();
+        }
+      });
+
+      // Initial Render
+      refreshDashboard();
+      generateSeniorPlannerMemo();
+      renderWowComparison();
+    });
+  </script>
+</body>
+</html>
