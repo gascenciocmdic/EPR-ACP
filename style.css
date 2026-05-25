@@ -802,3 +802,45 @@ tr:hover td {
 .scope-tag.new { background: rgba(16, 185, 129, 0.15); color: var(--color-emerald); }
 .scope-tag.deleted { background: rgba(244, 63, 94, 0.15); color: var(--color-rose); }
 
+/* Global Navigation Tabs */
+.global-tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 8px;
+}
+
+.global-tab-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  cursor: pointer;
+  position: relative;
+  transition: var(--transition-smooth);
+}
+
+.global-tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.global-tab-btn.active {
+  color: var(--color-indigo);
+}
+
+.global-tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -9px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-indigo);
+  box-shadow: 0 0 8px var(--color-indigo-glow);
+}
+
+

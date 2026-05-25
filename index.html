@@ -65,8 +65,17 @@
       </div>
     </section>
 
-    <!-- Filters Section -->
-    <section class="filter-panel" aria-label="Filtros del Dashboard">
+    <!-- Global Navigation Tabs -->
+    <div class="global-tabs">
+      <button id="global-tab-dashboard" class="global-tab-btn active">📊 Dashboard Ejecutivo</button>
+      <button id="global-tab-comparison" class="global-tab-btn">🔄 Comparativa Semanal (WoW)</button>
+    </div>
+
+    <!-- View 1: Dashboard Ejecutivo -->
+    <div id="view-dashboard" class="dashboard-view-content">
+
+      <!-- Filters Section -->
+      <section class="filter-panel" aria-label="Filtros del Dashboard">
       <div class="search-input-wrapper filter-group">
         <label for="search-box">Buscar Del entregarle / Actividad</label>
         <input type="text" id="search-box" class="filter-control" placeholder="Escriba código CMDIC, ID P6 o palabras clave...">
@@ -264,13 +273,7 @@
             </thead>
             <tbody>
               <!-- Injected by JS -->
-            </tbody>
           </table>
-
-          <!-- WoW Comparison view -->
-          <div id="wow-comparison-content" style="display: none;" class="wow-comparison-wrapper">
-            <!-- Injected by JS -->
-          </div>
         </div>
       </section>
 
@@ -338,6 +341,24 @@
         </div>
       </div>
     </section>
+
+    </div> <!-- End view-dashboard -->
+
+    <!-- View 2: Comparativa WoW Detallada -->
+    <div id="view-comparison" class="dashboard-view-content" style="display: none;">
+      <section class="chart-card" style="margin-bottom: 24px;">
+        <div class="chart-card-header">
+          <h2 class="chart-card-title">🔄 Análisis Comparativo Week-over-Week (WoW)</h2>
+          <div class="week-badge" style="background: rgba(99, 102, 241, 0.1); border-color: var(--color-indigo);">Semana Actual vs. Semana Pasada</div>
+        </div>
+        <div id="wow-comparison-content" class="wow-comparison-wrapper" style="padding: 10px;">
+          <!-- Injected by JS -->
+          <div style="text-align: center; color: var(--text-muted); padding: 40px 0;">
+            Cargando comparativa...
+          </div>
+        </div>
+      </section>
+    </div> <!-- End view-comparison -->
 
   </main>
 
@@ -1817,14 +1838,36 @@
         refreshDashboard();
       });
 
-      // Tabs switcher for desvíos
+      // Global navigation tabs switcher
+      const tabDashboardBtn = document.getElementById('global-tab-dashboard');
+      const tabComparisonBtn = document.getElementById('global-tab-comparison');
+      const viewDashboard = document.getElementById('view-dashboard');
+      const viewComparison = document.getElementById('view-comparison');
+
+      function showDashboardView() {
+        tabDashboardBtn.classList.add('active');
+        tabComparisonBtn.classList.remove('active');
+        viewDashboard.style.display = 'block';
+        viewComparison.style.display = 'none';
+      }
+
+      function showComparisonView() {
+        tabDashboardBtn.classList.remove('active');
+        tabComparisonBtn.classList.add('active');
+        viewDashboard.style.display = 'none';
+        viewComparison.style.display = 'block';
+      }
+
+      tabDashboardBtn.addEventListener('click', showDashboardView);
+      tabComparisonBtn.addEventListener('click', showComparisonView);
+
+      // Tabs switcher for desvíos within Dashboard Ejecutivo
       document.getElementById('tab-weekly-slips').addEventListener('click', (e) => {
         document.getElementById('tab-weekly-slips').classList.add('active');
         document.getElementById('tab-cum-delayed').classList.remove('active');
         document.getElementById('tab-wow-comparison').classList.remove('active');
         document.getElementById('table-weekly-slips-content').style.display = 'table';
         document.getElementById('table-cum-delayed-content').style.display = 'none';
-        document.getElementById('wow-comparison-content').style.display = 'none';
       });
 
       document.getElementById('tab-cum-delayed').addEventListener('click', (e) => {
@@ -1833,16 +1876,10 @@
         document.getElementById('tab-wow-comparison').classList.remove('active');
         document.getElementById('table-weekly-slips-content').style.display = 'none';
         document.getElementById('table-cum-delayed-content').style.display = 'table';
-        document.getElementById('wow-comparison-content').style.display = 'none';
       });
 
       document.getElementById('tab-wow-comparison').addEventListener('click', (e) => {
-        document.getElementById('tab-weekly-slips').classList.remove('active');
-        document.getElementById('tab-cum-delayed').classList.remove('active');
-        document.getElementById('tab-wow-comparison').classList.add('active');
-        document.getElementById('table-weekly-slips-content').style.display = 'none';
-        document.getElementById('table-cum-delayed-content').style.display = 'none';
-        document.getElementById('wow-comparison-content').style.display = 'block';
+        showComparisonView();
       });
 
       // Collapsible Excel Upload Widget Click Handler
